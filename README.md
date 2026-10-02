@@ -6,7 +6,9 @@ Added Custom Objects- Event, Attendee, Registration with standard objects Report
 Create a junction Relationship- Event(master)< Registration(detail)> Attendee(master).
 
 On Event object- data type(Roll up summary), summarized object- Registration. summary type- COUNT. Field (Total Registered)
+
 Validation Rule: 
+    
     1.Event_Starting_Date- Error Condition Formula is Start_Date__c >= TODAY(). Where Error Message is Starting date must be in Past or Today.
     2.End_Date- Error Condition Formula is End_Date__c <= TODAY(). Where Error Message is End Date Must be in Future.
     
