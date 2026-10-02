@@ -1,0 +1,79 @@
+public with sharing class Registration {
+    
+    public static void validateRegistrations(List<Registration__c> newRegistrations) {
+        // Step 1: Gather all Event and Attendee IDs from incoming registrations
+        Set<Id> eventIds = new Set<Id>();
+        Set<Id> attendeeIds = new Set<Id>();
+        
+        for (Registration__c reg : newRegistrations) {
+            if (reg.Event__c != null) {
+                eventIds.add(reg.Event__c);
+            }
+            if (reg.Attendee__c != null) {
+                attendeeIds.add(reg.Attendee__c);
+            }
+        }
+        
+        if (eventIds.isEmpty() || attendeeIds.isEmpty()) {
+            return;
+        }
+
+        // Step 2: Fetch details of the incoming Attendees (to get their Name and Email for duplicate checking)
+        Map<Id, Attendee__c> incomingAttendeesMap = new Map<Id, Attendee__c>([SELECT Id, Name, Email__c FROM Attendee__c WHERE Id IN :attendeeIds]);
+
+        // Step 3: Fetch Event capacities and current registration counts
+        // (Assuming you have a Roll-Up Summary field on Event__c named Total_Registrations__c)
+        Map<Id, Event__c> eventsMap = new Map<Id, Event__c>([
+            SELECT Id, Max_Capacity__c, Total_Registered__c FROM Event__c WHERE Id IN :eventIds]);
+
+        // Step 4: Query existing registrations for these events to check for duplicates
+        // We pull the Attendee's Name and Email via relationship queries
+        List<Registration__c> existingRegistrations = [SELECT Id, Event__c, Attendee__r.Name, Attendee__r.Email__c FROM Registration__c WHERE Event__c IN :eventIds];
+
+        // Step 5: Keep track of how many seats we are dynamically filling during this bulk transaction
+        Map<Id, Integer> seatsAllocatedInTransaction = new Map<Id, Integer>();
+
+        // Step 6: Loop through incoming registrations to validate
+        for (Registration__c newReg : newRegistrations) {
+            Attendee__c currentAttendee = incomingAttendeesMap.get(newReg.Attendee__c);
+            Event__c currentEvent = eventsMap.get(newReg.Event__c);
+            
+            if (currentAttendee == null || currentEvent == null) {
+                continue;
+            }
+
+            // --- VALIDATION A: Duplicate Check (Name & Email) ---
+            Boolean isDuplicate = false;
+            for (Registration__c existingReg : existingRegistrations) {
+                if (existingReg.Event__c == newReg.Event__c && 
+                    existingReg.Attendee__r.Name == currentAttendee.Name && 
+                    existingReg.Attendee__r.Email__c == currentAttendee.Email__c) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if (isDuplicate) {
+                newReg.addError('This attendee (matching Name and Email) is already registered for this event.');
+                continue; // Skip capacity check if it's already a duplicate
+            }
+
+            // --- VALIDATION B: Capacity Check ---
+            Decimal maxCapacity = currentEvent.Max_Capacity__c != null ? currentEvent.Max_Capacity__c : 0;
+            Decimal currentCount = currentEvent.Total_Registered__c != null ? currentEvent.Total_Registered__c : 0;
+            
+            // Track seats dynamically for bulk inserts
+            if (!seatsAllocatedInTransaction.containsKey(newReg.Event__c)) {
+                seatsAllocatedInTransaction.put(newReg.Event__c, 0);
+            }
+            Integer additionalSeats = seatsAllocatedInTransaction.get(newReg.Event__c);
+
+            if ((currentCount + additionalSeats) >= maxCapacity) {
+                newReg.addError('Cannot complete registration. The event has reached its maximum capacity.');
+            } else {
+                // Increment the counter for this event in case the batch has multiple sign-ups for the same event
+                seatsAllocatedInTransaction.put(newReg.Event__c, additionalSeats + 1);
+            }
+        }
+    }
+}
