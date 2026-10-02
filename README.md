@@ -13,6 +13,7 @@ Validation Rule:
     2.End_Date- Error Condition Formula is End_Date__c <= TODAY(). Where Error Message is End Date Must be in Future.
     
 Record Triggerd Flow(Event Management): 
+
     Step1. On Registration object- When a record is created- Action and Related Records.
     Step2. Add Action(Send Confirmation Email)- Recipient Address(Triggering Registration_c> Attendee> Email)- Sender Email Address(Running User>Email)- Compose Email Content. Subject(Event Registration Confirmed)- Add Body({!Email_for_Confirmation})- Recipient ID({!$Record.Attendee__r.Id}).
     
